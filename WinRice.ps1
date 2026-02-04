@@ -281,7 +281,7 @@ Start-Transcript -OutputDirectory "C:\WinRice" | Out-Null
 $CurrentVersionPath = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
 $CurrentBuild = Get-ItemPropertyValue $CurrentVersionPath -Name CurrentBuild
 $DisplayVersion = Get-ItemPropertyValue $CurrentVersionPath -Name DisplayVersion -ErrorAction SilentlyContinue
-$ProductNameCore = (Get-WmiObject -class Win32_OperatingSystem).Caption
+$ProductNameCore = (Get-CimInstance -ClassName Win32_OperatingSystem).Caption
 $ProductName = $ProductNameCore.TrimStart("Microsoft ")
 $ProductNameCore = $null
 $OSBuildCore = Get-ItemPropertyValue -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Update\TargetingInfo\Installed\Client.OS.rs2.amd64" -Name Version 
@@ -314,10 +314,10 @@ Write-Host "Beginning checks..."
 # Check 1: If supported OS build.
 $oscheck = {
 	$CurrentBuild = Get-ItemPropertyValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name CurrentBuild
-	if ($CurrentBuild -lt 19045) {
+	if ($CurrentBuild -lt 19041) {
 		return $false
 	}
-	elseif ($CurrentBuild -ge 19045) {
+	elseif ($CurrentBuild -ge 19041) {
 		return $true
 	}
 }
@@ -347,7 +347,7 @@ $isonline = {
 RunWithProgress -Text "[3/5] Device is connected to the Internet" -Task $isonline -Exit $true | Out-Null
 
 # Check 4: Device form-factor (https://devblogs.microsoft.com/scripting/hey-scripting-guy-weekend-scripter-how-can-i-use-wmi-to-detect-laptops/).
-if (Get-WmiObject -Class Win32_SystemEnclosure | Where-Object { $_.ChassisTypes -eq 9 -or $_.ChassisTypes -eq 10 -or $_.ChassisTypes -eq 14 }) { 
+if (Get-CimInstance -ClassName Win32_SystemEnclosure | Where-Object { $_.ChassisTypes -eq 9 -or $_.ChassisTypes -eq 10 -or $_.ChassisTypes -eq 14 }) { 
 	$isLaptop = $true
 }
 
@@ -378,7 +378,7 @@ $isrestartpending = {
 			if (($WMI_Reg.EnumKey($HKLM, "SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\")).sNames -contains 'RebootRequired') { $PendingReboot = $true }
 		
 			# Check for SCCM namespace.
-			$SCCM_Namespace = Get-WmiObject -Namespace ROOT\CCM\ClientSDK -List -ComputerName $Computer -ErrorAction Ignore
+			$SCCM_Namespace = Get-CimInstance -Namespace ROOT\CCM\ClientSDK -ClassName __NAMESPACE -ComputerName $Computer -ErrorAction Ignore
 			if ($SCCM_Namespace) {
 				if (([WmiClass]"\\$Computer\ROOT\CCM\ClientSDK:CCM_ClientUtilities").DetermineIfRebootPending().RebootPending -eq $true) { $PendingReboot = $true }
 			}
@@ -2412,7 +2412,7 @@ function EnableLocationTracking {
 	print "Enabling Location tracking..."
 	$Location1 = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
 	$Location2 = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}"
-	if (!(Test-Path )) {
+	if (!(Test-Path $Location1)) {
 		New-Item -Path $Location1 -Force | Out-Null
 	}
 	Set-ItemProperty -Path $Location1 -Name "Value" -Type String -Value "Allow"
@@ -2460,7 +2460,7 @@ function EnableSpeechRecognition {
 	space
 	print "Enabling Speech recognition..."
 	$Speech = "HKCU:\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy"
-	if (!(Test-Path )) {
+	if (!(Test-Path $Speech)) {
 		New-Item -Path $Speech | Out-Null
 	}
 	Set-ItemProperty -Path $Speech -Name "HasAccepted" -Type DWord -Value 1
@@ -3109,7 +3109,7 @@ function EnableTasks {
 
 # Disable AMD tasks
 function DisableAMDTasks {
-	if ((Get-WmiObject Win32_Processor).Manufacturer -ne "AuthenticAMD") {
+	if ((Get-CimInstance -ClassName Win32_Processor).Manufacturer -ne "AuthenticAMD") {
 		return
 	}
 	space
@@ -3130,7 +3130,7 @@ function DisableAMDTasks {
 
 # Enable AMD tasks
 function EnableAMDTasks {
-	if ((Get-WmiObject Win32_Processor).Manufacturer -ne "AuthenticAMD") {
+	if ((Get-CimInstance -ClassName Win32_Processor).Manufacturer -ne "AuthenticAMD") {
 		return
 	}
 	print "Enabling additional AMD specific tasks..."
@@ -3641,9 +3641,19 @@ function DisableWidgets {
 		return
 	}
 	space
-	print "Disabling Widgets icon..."
-	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -Type DWord -Value 0
-	print "Disabled Widgets icon."
+	print "Disabling Widgets..."
+	
+	# Disable via user registry (may not work on 24H2+)
+	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -Type DWord -Value 0 -ErrorAction SilentlyContinue
+	
+	# Also disable via policy (more robust for 24H2+)
+	$DshPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+	if (!(Test-Path $DshPolicy)) {
+		New-Item -Path $DshPolicy -Force | Out-Null
+	}
+	Set-ItemProperty -Path $DshPolicy -Name "AllowNewsAndInterests" -Type DWord -Value 0 -Force
+	
+	print "Disabled Widgets."
 }
 
 # Enable Widgets icon.
@@ -3653,9 +3663,16 @@ function EnableWidgets {
 		return
 	}
 	space
-	print "Enabling Widgets icon..."
-	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -Type DWord -Value 1
-	print "Enabled Widgets icon."
+	print "Enabling Widgets..."
+	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarDa -Type DWord -Value 1 -ErrorAction SilentlyContinue
+	
+	# Remove policy-based disable
+	$DshPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Dsh"
+	if (Test-Path $DshPolicy) {
+		Remove-ItemProperty -Path $DshPolicy -Name "AllowNewsAndInterests" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled Widgets."
 }
 
 # Disable chat icon.
@@ -3703,15 +3720,22 @@ function DisableCopilot {
 	space
 	print "Disabling Windows Copilot..."
 	
-	# Disable Copilot via Group Policy
-	$CopilotPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
-	if (!(Test-Path $CopilotPolicy)) {
-		New-Item -Path $CopilotPolicy -Force | Out-Null
+	# Disable Copilot via machine Group Policy
+	$CopilotPolicyLM = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+	if (!(Test-Path $CopilotPolicyLM)) {
+		New-Item -Path $CopilotPolicyLM -Force | Out-Null
 	}
-	Set-ItemProperty -Path $CopilotPolicy -Name "TurnOffWindowsCopilot" -Type DWord -Value 1 -Force
+	Set-ItemProperty -Path $CopilotPolicyLM -Name "TurnOffWindowsCopilot" -Type DWord -Value 1 -Force
+	
+	# Also set user policy (for Home editions where machine policies may not apply)
+	$CopilotPolicyCU = "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot"
+	if (!(Test-Path $CopilotPolicyCU)) {
+		New-Item -Path $CopilotPolicyCU -Force | Out-Null
+	}
+	Set-ItemProperty -Path $CopilotPolicyCU -Name "TurnOffWindowsCopilot" -Type DWord -Value 1 -Force
 	
 	# Disable Copilot button from taskbar
-	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Type DWord -Value 0 -Force
+	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Type DWord -Value 0 -Force -ErrorAction SilentlyContinue
 	
 	# Disable Copilot in Edge
 	$EdgePolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
