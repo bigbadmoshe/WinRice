@@ -69,7 +69,7 @@ $tasks = @(
 	"DisableAdsInStart",
 	# "EnableAdsInStart",
 	"DisableTailoredExperiences",	
-	# "EnableTailoredExperiences",s
+	# "EnableTailoredExperiences",
 	"TelemetryRequired",				
 	"TelemetryOptional",
 	"EnableClipboard",				
@@ -88,9 +88,9 @@ $tasks = @(
 	# "DisableSEHOP",
 	"DisableWPAD",
 	# "EnableWPAD",
-	"EnableLSAProtection"
+	"EnableLSAProtection",
 	# "DisableLSAProtection"
-	"DisableScriptHost"
+	"DisableScriptHost",
 	# "EnableScriptHost"
 	"DisableOfficeOLE",
 	# "EnableOfficeOLE",
@@ -131,6 +131,20 @@ $tasks = @(
 	# "EnableWindowsTipsNotifications",
 	"DisableWindowsWelcomeExperience",
 	# "EnableWindowsWelcomeExperience",
+	"ChangesDone",
+
+	### AI Features ###
+	"AIFeatures",
+	"DisableCopilot",
+	# "EnableCopilot",
+	"DisableRecall",
+	# "EnableRecall",
+	"DisableAIInNotepad",
+	# "EnableAIInNotepad",
+	"DisableAIInPaint",
+	# "EnableAIInPaint",
+	"DisableAIInPhotos",
+	# "EnableAIInPhotos",
 	"ChangesDone",
 
 	### Windows Explorer ###
@@ -3666,6 +3680,214 @@ function EnableChat {
 	print "Enabling Chat icon..."
 	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name TaskbarMn -Type DWord -Value 1
 	print "Enabled Chat icon."
+}
+
+###################################
+######### AI FEATURES #############
+###################################
+
+# Update status
+function AIFeatures {
+	space
+	print "------------------------"
+	print "      AI FEATURES       "
+	print "------------------------"
+}
+
+# Disable Windows Copilot.
+# This function only runs in Windows 11.
+function DisableCopilot {
+	if ($CurrentBuild -lt 22000) {
+		return
+	}
+	space
+	print "Disabling Windows Copilot..."
+	
+	# Disable Copilot via Group Policy
+	$CopilotPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+	if (!(Test-Path $CopilotPolicy)) {
+		New-Item -Path $CopilotPolicy -Force | Out-Null
+	}
+	Set-ItemProperty -Path $CopilotPolicy -Name "TurnOffWindowsCopilot" -Type DWord -Value 1 -Force
+	
+	# Disable Copilot button from taskbar
+	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Type DWord -Value 0 -Force
+	
+	# Disable Copilot in Edge
+	$EdgePolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+	if (!(Test-Path $EdgePolicy)) {
+		New-Item -Path $EdgePolicy -Force | Out-Null
+	}
+	Set-ItemProperty -Path $EdgePolicy -Name "HubsSidebarEnabled" -Type DWord -Value 0 -Force
+	
+	print "Disabled Windows Copilot."
+}
+
+# Enable Windows Copilot.
+# This function only runs in Windows 11.
+function EnableCopilot {
+	if ($CurrentBuild -lt 22000) {
+		return
+	}
+	space
+	print "Enabling Windows Copilot..."
+	
+	$CopilotPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot"
+	if (Test-Path $CopilotPolicy) {
+		Remove-ItemProperty -Path $CopilotPolicy -Name "TurnOffWindowsCopilot" -ErrorAction SilentlyContinue
+	}
+	
+	Set-ItemProperty -Path "Registry::HKEY_USERS\$hkeyuser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Name "ShowCopilotButton" -Type DWord -Value 1 -Force
+	
+	$EdgePolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+	if (Test-Path $EdgePolicy) {
+		Remove-ItemProperty -Path $EdgePolicy -Name "HubsSidebarEnabled" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled Windows Copilot."
+}
+
+# Disable Windows Recall.
+# This function only runs in Windows 11 24H2+.
+function DisableRecall {
+	if ($CurrentBuild -lt 26100) {
+		return
+	}
+	space
+	print "Disabling Windows Recall..."
+	
+	# Disable Recall via Group Policy
+	$RecallPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
+	if (!(Test-Path $RecallPolicy)) {
+		New-Item -Path $RecallPolicy -Force | Out-Null
+	}
+	Set-ItemProperty -Path $RecallPolicy -Name "DisableAIDataAnalysis" -Type DWord -Value 1 -Force
+	
+	# Also disable in user settings
+	$RecallUser = "HKCU:\Software\Microsoft\Windows\CurrentVersion\WindowsAI"
+	if (!(Test-Path $RecallUser)) {
+		New-Item -Path $RecallUser -Force | Out-Null
+	}
+	Set-ItemProperty -Path $RecallUser -Name "DisableAIDataAnalysis" -Type DWord -Value 1 -Force
+	
+	print "Disabled Windows Recall."
+}
+
+# Enable Windows Recall.
+# This function only runs in Windows 11 24H2+.
+function EnableRecall {
+	if ($CurrentBuild -lt 26100) {
+		return
+	}
+	space
+	print "Enabling Windows Recall..."
+	
+	$RecallPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI"
+	if (Test-Path $RecallPolicy) {
+		Remove-ItemProperty -Path $RecallPolicy -Name "DisableAIDataAnalysis" -ErrorAction SilentlyContinue
+	}
+	
+	$RecallUser = "HKCU:\Software\Microsoft\Windows\CurrentVersion\WindowsAI"
+	if (Test-Path $RecallUser) {
+		Remove-ItemProperty -Path $RecallUser -Name "DisableAIDataAnalysis" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled Windows Recall."
+}
+
+# Disable AI features in Notepad (Cowriter).
+function DisableAIInNotepad {
+	space
+	print "Disabling AI in Notepad..."
+	
+	$NotepadAI = "HKCU:\Software\Microsoft\Notepad"
+	if (!(Test-Path $NotepadAI)) {
+		New-Item -Path $NotepadAI -Force | Out-Null
+	}
+	Set-ItemProperty -Path $NotepadAI -Name "EnableCowriter" -Type DWord -Value 0 -Force
+	
+	print "Disabled AI in Notepad."
+}
+
+# Enable AI features in Notepad (Cowriter).
+function EnableAIInNotepad {
+	space
+	print "Enabling AI in Notepad..."
+	
+	$NotepadAI = "HKCU:\Software\Microsoft\Notepad"
+	if (Test-Path $NotepadAI) {
+		Remove-ItemProperty -Path $NotepadAI -Name "EnableCowriter" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled AI in Notepad."
+}
+
+# Disable AI features in Paint (Cocreator, Image Creator, generative features).
+function DisableAIInPaint {
+	space
+	print "Disabling AI in Paint..."
+	
+	$PaintAI = "HKCU:\Software\Microsoft\Paint"
+	if (!(Test-Path $PaintAI)) {
+		New-Item -Path $PaintAI -Force | Out-Null
+	}
+	Set-ItemProperty -Path $PaintAI -Name "EnableCocreator" -Type DWord -Value 0 -Force
+	Set-ItemProperty -Path $PaintAI -Name "EnableImageCreator" -Type DWord -Value 0 -Force
+	
+	# Disable via policy as well
+	$PaintPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Paint"
+	if (!(Test-Path $PaintPolicy)) {
+		New-Item -Path $PaintPolicy -Force | Out-Null
+	}
+	Set-ItemProperty -Path $PaintPolicy -Name "DisableCocreator" -Type DWord -Value 1 -Force
+	
+	print "Disabled AI in Paint."
+}
+
+# Enable AI features in Paint.
+function EnableAIInPaint {
+	space
+	print "Enabling AI in Paint..."
+	
+	$PaintAI = "HKCU:\Software\Microsoft\Paint"
+	if (Test-Path $PaintAI) {
+		Remove-ItemProperty -Path $PaintAI -Name "EnableCocreator" -ErrorAction SilentlyContinue
+		Remove-ItemProperty -Path $PaintAI -Name "EnableImageCreator" -ErrorAction SilentlyContinue
+	}
+	
+	$PaintPolicy = "HKLM:\SOFTWARE\Policies\Microsoft\Paint"
+	if (Test-Path $PaintPolicy) {
+		Remove-ItemProperty -Path $PaintPolicy -Name "DisableCocreator" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled AI in Paint."
+}
+
+# Disable AI features in Photos (background removal, generative erase, etc.).
+function DisableAIInPhotos {
+	space
+	print "Disabling AI in Photos..."
+	
+	$PhotosAI = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Photos"
+	if (!(Test-Path $PhotosAI)) {
+		New-Item -Path $PhotosAI -Force | Out-Null
+	}
+	Set-ItemProperty -Path $PhotosAI -Name "EnableAIFeatures" -Type DWord -Value 0 -Force
+	
+	print "Disabled AI in Photos."
+}
+
+# Enable AI features in Photos.
+function EnableAIInPhotos {
+	space
+	print "Enabling AI in Photos..."
+	
+	$PhotosAI = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Photos"
+	if (Test-Path $PhotosAI) {
+		Remove-ItemProperty -Path $PhotosAI -Name "EnableAIFeatures" -ErrorAction SilentlyContinue
+	}
+	
+	print "Enabled AI in Photos."
 }
 
 ####################################
